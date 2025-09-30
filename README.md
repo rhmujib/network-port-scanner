@@ -1,4 +1,4 @@
-# Network Port Scanner (WOLF)
+# Network Port Scanner ( WOLF )
 
 A Python-based network port scanner for reconnaissance and network analysis. This tool allows you to scan ports on a target host or range of hosts, identify open ports, and optionally generate a PDF report of the results.
 
