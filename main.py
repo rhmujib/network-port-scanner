@@ -1,0 +1,440 @@
+#!/usr/bin/env python3
+"""
+Network Port Scanner Tool (WOLF)
+A legitimate security testing tool for authorized network scanning only.
+Use only on networks you own or have explicit permission to scan.
+"""
+
+import socket
+import sys
+import argparse
+import json
+import csv
+import threading  # Removed if unused
+import ipaddress
+from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
+from typing import List, Dict, Tuple, Optional
+import warnings
+
+# Optional imports for PDF generation
+try:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet
+    PDF_AVAILABLE = True
+except ImportError:
+    PDF_AVAILABLE = False
+    warnings.warn("reportlab not installed. PDF export will be unavailable. Install with: pip install reportlab")
+
+class PortScanner:
+    """Main port scanner class for network reconnaissance"""
+    
+    # Common port-service mappings
+    COMMON_PORTS = {
+        21: 'FTP',
+        22: 'SSH',
+        23: 'Telnet',
+        25: 'SMTP',
+        53: 'DNS',
+        80: 'HTTP',
+        110: 'POP3',
+        111: 'RPCBind',
+        135: 'MSRPC',
+        139: 'NetBIOS-SSN',
+        143: 'IMAP',
+        443: 'HTTPS',
+        445: 'Microsoft-DS',
+        993: 'IMAPS',
+        995: 'POP3S',
+        1723: 'PPTP',
+        3306: 'MySQL',
+        3389: 'MS-WBT-Server',
+        5432: 'PostgreSQL',
+        5900: 'VNC',
+        6379: 'Redis',
+        8080: 'HTTP-Proxy',
+        8443: 'HTTPS-Alt',
+        27017: 'MongoDB'
+    }
+    
+    def __init__(self, timeout: float = 1.0, max_threads: int = 50):
+        """
+        Initialize the port scanner
+        
+        Args:
+            timeout: Socket connection timeout in seconds
+            max_threads: Maximum number of concurrent threads
+        """
+        self.timeout = timeout
+        self.max_threads = max_threads
+        self.results = []
+        
+    def scan_port(self, host: str, port: int) -> Optional[Dict[str, str]]:
+        """
+        Scan a single port on a host
+        
+        Args:
+            host: Target host IP or hostname
+            port: Port number to scan
+            
+        Returns:
+            Dictionary with scan results or None if port is closed
+        """
+        try:
+            # Create socket and set timeout
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(self.timeout)
+            
+            # Attempt connection
+            result = sock.connect_ex((host, port))
+            
+            if result == 0:
+                # Port is open
+                service = self.COMMON_PORTS.get(port, 'Unknown')
+                banner = self.grab_banner(sock, host, port)
+                
+                scan_result = {
+                    'host': host,
+                    'port': port,
+                    'state': 'open',
+                    'service': service,
+                    'banner': banner,
+                    'timestamp': datetime.now().isoformat()
+                }
+                
+                sock.close()
+                return scan_result
+            
+            sock.close()
+            return None
+            
+        except socket.gaierror:
+            print(f"Error: Cannot resolve hostname {host}")
+            return None
+        except Exception as e:
+            return None
+    
+    def grab_banner(self, sock: socket.socket, host: str, port: int) -> str:
+        """
+        Attempt to grab service banner
+        
+        Args:
+            sock: Connected socket object
+            host: Target host
+            port: Target port
+            
+        Returns:
+            Banner string or empty string if unavailable
+        """
+        try:
+            # Send a generic probe for HTTP services
+            if port in [80, 8080, 8443]:
+                sock.send(b'HEAD / HTTP/1.0\r\n\r\n')
+            elif port in [21, 22, 23, 25, 110, 143]:
+                # These services often send banner immediately
+                pass
+            else:
+                # Send a newline to trigger response
+                sock.send(b'\r\n')
+            
+            # Receive banner with timeout
+            sock.settimeout(2.0)
+            banner = sock.recv(1024).decode('utf-8', errors='ignore').strip()
+            
+            # Clean up banner
+            banner = banner.replace('\r', ' ').replace('\n', ' ')
+            return banner[:200]  # Limit banner length
+            
+        except:
+            return ""
+    
+    def scan_host(self, host: str, ports: List[int]) -> List[Dict[str, str]]:
+        """
+        Scan multiple ports on a single host
+        
+        Args:
+            host: Target host
+            ports: List of ports to scan
+            
+        Returns:
+            List of scan results
+        """
+        host_results = []
+        
+        with ThreadPoolExecutor(max_workers=self.max_threads) as executor:
+            future_to_port = {executor.submit(self.scan_port, host, port): port 
+                            for port in ports}
+            
+            for future in as_completed(future_to_port):
+                result = future.result()
+                if result:
+                    host_results.append(result)
+                    print(f"[+] {result['host']}:{result['port']} - OPEN - {result['service']}")
+                    if result['banner']:
+                        print(f"    Banner: {result['banner'][:50]}...")
+        
+        return host_results
+    
+    def scan_range(self, targets: List[str], ports: List[int]) -> List[Dict[str, str]]:
+        """
+        Scan multiple hosts and ports
+        
+        Args:
+            targets: List of target hosts/IPs
+            ports: List of ports to scan
+            
+        Returns:
+            Complete scan results
+        """
+        all_results = []
+        
+        for target in targets:
+            print(f"\n[*] Scanning host: {target}")
+            host_results = self.scan_host(target, ports)
+            all_results.extend(host_results)
+        
+        self.results = all_results
+        return all_results
+
+class ReportExporter:
+    """Handle exporting scan results to various formats"""
+    
+    @staticmethod
+    def export_json(results: List[Dict], filename: str):
+        """Export results to JSON format"""
+        with open(filename, 'w') as f:
+            json.dump(results, f, indent=2, default=str)
+        print(f"[+] JSON report saved to {filename}")
+    
+    @staticmethod
+    def export_csv(results: List[Dict], filename: str):
+        """Export results to CSV format"""
+        if not results:
+            print("[-] No results to export")
+            return
+        
+        keys = ['host', 'port', 'state', 'service', 'banner', 'timestamp']
+        with open(filename, 'w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=keys)
+            writer.writeheader()
+            writer.writerows(results)
+        print(f"[+] CSV report saved to {filename}")
+    
+    @staticmethod
+    def export_pdf(results: List[Dict], filename: str):
+        """Export results to PDF format"""
+        if not PDF_AVAILABLE:
+            print("[-] PDF export unavailable. Install reportlab: pip install reportlab")
+            return
+        
+        doc = SimpleDocTemplate(filename, pagesize=letter)
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        # Title
+        title = Paragraph("Network Port Scan Report", styles['Title'])
+        elements.append(title)
+        elements.append(Spacer(1, 12))
+        
+        # Metadata
+        metadata = Paragraph(f"Scan Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", 
+                           styles['Normal'])
+        elements.append(metadata)
+        elements.append(Spacer(1, 12))
+        
+        # Results table
+        if results:
+            data = [['Host', 'Port', 'State', 'Service', 'Banner']]
+            for r in results:
+                banner = r['banner'][:30] + '...' if len(r['banner']) > 30 else r['banner']
+                data.append([
+                    r['host'],
+                    str(r['port']),
+                    r['state'],
+                    r['service'],
+                    banner
+                ])
+            
+            table = Table(data)
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ]))
+            elements.append(table)
+        else:
+            no_results = Paragraph("No open ports found", styles['Normal'])
+            elements.append(no_results)
+        
+        doc.build(elements)
+        print(f"[+] PDF report saved to {filename}")
+
+def parse_ports(port_arg: str) -> List[int]:
+    """
+    Parse port argument into list of ports
+    
+    Args:
+        port_arg: Port specification (e.g., "80", "1-100", "80,443,8080")
+        
+    Returns:
+        List of port numbers
+    """
+    ports = []
+    
+    if ',' in port_arg:
+        # Comma-separated ports
+        for p in port_arg.split(','):
+            if '-' in p:
+                # Range within comma-separated
+                start, end = map(int, p.split('-'))
+                ports.extend(range(start, end + 1))
+            else:
+                ports.append(int(p))
+    elif '-' in port_arg:
+        # Port range
+        start, end = map(int, port_arg.split('-'))
+        ports = list(range(start, end + 1))
+    else:
+        # Single port
+        ports = [int(port_arg)]
+    
+    # Filter valid ports
+    return [p for p in ports if 0 < p <= 65535]
+
+def parse_targets(target_arg: str) -> List[str]:
+    """
+    Parse target argument into list of hosts
+    
+    Args:
+        target_arg: Target specification (IP, hostname, or CIDR range)
+        
+    Returns:
+        List of target hosts
+    """
+    targets = []
+    
+    try:
+        # Check if it's a CIDR network
+        if '/' in target_arg:
+            network = ipaddress.ip_network(target_arg, strict=False)
+            targets = [str(ip) for ip in network.hosts()]
+            if not targets:  # Single host with /32
+                targets = [str(network.network_address)]
+        else:
+            # Single IP or hostname
+            targets = [target_arg]
+    except ValueError:
+        # Assume it's a hostname
+        targets = [target_arg]
+    
+    return targets
+
+def main() -> int:
+    """Main entry point"""
+    
+    # -----------------------
+    # Stylish Big Banner (WOLF)
+    # -----------------------
+    banner = r"""
+    ╔════════════════════════════════════════════════════════════════════════╗
+    ║                        Network Port Scanner v1.0                       ║
+    ║                      For authorized testing only!                      ║
+    ╚════════════════════════════════════════════════════════════════════════╝
+
+                        ██     ██   ██████    ██       ███████ 
+                        ██     ██  ██    ██   ██       ██      
+                        ██  █  ██  ██    ██   ██       █████   
+                        ██ ███ ██  ██    ██   ██       ██      
+                        ███   ███   ██████    ███████  ██  
+                    
+
+                     --- Developed by:  >>>  CYBERMJ  <<< ---
+    """
+    print(banner)
+    
+    parser = argparse.ArgumentParser(
+        description='Network port scanner for authorized security testing',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='Examples:\n'
+               '  %(prog)s -t 192.168.1.1 -p 80,443\n'
+               '  %(prog)s -t 192.168.1.0/24 -p 1-100\n'
+               '  %(prog)s -t example.com -p 21,22,80,443 -o report'
+    )
+    
+    parser.add_argument('-t', '--target', required=True,
+                      help='Target host, IP, or CIDR range (e.g., 192.168.1.1, 192.168.1.0/24)')
+    parser.add_argument('-p', '--ports', default='1-1000',
+                      help='Ports to scan (e.g., 80, 1-100, 80,443,8080)')
+    parser.add_argument('-o', '--output', 
+                      help='Output filename prefix (generates .json, .csv, .pdf)')
+    parser.add_argument('--timeout', type=float, default=1.0,
+                      help='Connection timeout in seconds (default: 1.0)')
+    parser.add_argument('--threads', type=int, default=50,
+                      help='Maximum concurrent threads (default: 50)')
+    
+    args = parser.parse_args()
+    
+    # Parse targets and ports
+    targets = parse_targets(args.target)
+    ports = parse_ports(args.ports)
+    
+    if not targets:
+        print("[-] No valid targets specified")
+        sys.exit(1)
+    
+    if not ports:
+        print("[-] No valid ports specified")
+        sys.exit(1)
+    
+    print(f"[*] Targets: {len(targets)} host(s)")
+    print(f"[*] Ports: {len(ports)} port(s)")
+    print(f"[*] Timeout: {args.timeout}s")
+    print(f"[*] Threads: {args.threads}")
+    
+    # Confirmation for large scans
+    total_scans = len(targets) * len(ports)
+    if total_scans > 1000:
+        response = input(f"\n[!] This will perform {total_scans} scans. Continue? (y/n): ")
+        if response.lower() != 'y':
+            print("[*] Scan cancelled")
+            sys.exit(0)
+    
+    # Initialize scanner
+    scanner = PortScanner(timeout=args.timeout, max_threads=args.threads)
+    
+    # Start scanning
+    print("\n[*] Starting scan...")
+    start_time = time.time()
+    
+    results = scanner.scan_range(targets, ports)
+    
+    elapsed = time.time() - start_time
+    print(f"\n[*] Scan completed in {elapsed:.2f} seconds")
+    print(f"[*] Found {len(results)} open port(s)")
+    
+    # Export results if requested
+    if args.output and results:
+        exporter = ReportExporter()
+        exporter.export_json(results, f"{args.output}.json")
+        exporter.export_csv(results, f"{args.output}.csv")
+        exporter.export_pdf(results, f"{args.output}.pdf")
+    
+    return 0
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        print("\n[!] Scan interrupted by user")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n[-] Error: {e}")
+        sys.exit(1)
