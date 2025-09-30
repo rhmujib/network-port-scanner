@@ -330,10 +330,13 @@ def parse_targets(target_arg: str) -> List[str]:
                 targets = [str(network.network_address)]
         else:
             # Single IP or hostname
+            # Attempt to resolve hostname to ensure it's valid
+            socket.gethostbyname(target_arg)  # Resolves hostname to IP
             targets = [target_arg]
     except ValueError:
-        # Assume it's a hostname
-        targets = [target_arg]
+        print(f"[-] Invalid target: {target_arg}")
+    except socket.gaierror:
+        print(f"[-] Unable to resolve hostname: {target_arg}")
     
     return targets
 
@@ -430,11 +433,24 @@ def main() -> int:
     return 0
 
 if __name__ == "__main__":
-    try:
-        sys.exit(main())
-    except KeyboardInterrupt:
-        print("\n[!] Scan interrupted by user")
-        sys.exit(1)
-    except Exception as e:
-        print(f"\n[-] Error: {e}")
-        sys.exit(1)
+    import os
+    import subprocess
+
+    # Check if the script is invoked as "wolf"
+    if os.path.basename(sys.argv[0]) == "wolf":
+        try:
+            sys.exit(main())
+        except KeyboardInterrupt:
+            print("\n[!] Scan interrupted by user")
+            sys.exit(1)
+        except Exception as e:
+            print(f"\n[-] Error: {e}")
+            sys.exit(1)
+    else:
+        # Provide instructions if not invoked as "wolf"
+        print("This script is intended to be used as a CLI tool with the command 'wolf'.")
+        print("To use it, create a symbolic link or alias named 'wolf' pointing to this script.")
+        print("Example:")
+        print("  ln -s /path/to/main.py /usr/local/bin/wolf")
+        print("Then run:")
+        print("  wolf -t <target> -p <ports> [options]")
