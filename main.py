@@ -356,7 +356,7 @@ def main() -> int:
                         ███   ███   ██████    ███████  ██  
                     
 
-                     --- Developed by:  >>>  CYBERMJ  <<< ---
+                     --- Developed by:  >>>  CYBERMJ-MUJIB  <<< ---
     """
     print(banner)
     
@@ -375,9 +375,9 @@ def main() -> int:
                       help='Ports to scan (e.g., 80, 1-100, 80,443,8080)')
     parser.add_argument('-o', '--output', 
                       help='Output filename prefix (generates .json, .csv, .pdf)')
-    parser.add_argument('--timeout', type=float, default=1.0,
+    parser.add_argument('--timeout', '-T', type=float, default=1.0,
                       help='Connection timeout in seconds (default: 1.0)')
-    parser.add_argument('--threads', type=int, default=50,
+    parser.add_argument('--threads', '-P', type=int, default=50,
                       help='Maximum concurrent threads (default: 50)')
     
     args = parser.parse_args()
