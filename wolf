@@ -25,10 +25,9 @@ try:
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
     from reportlab.lib.styles import getSampleStyleSheet
     PDF_AVAILABLE = True
-except ImportError as e:
+except ImportError:
     PDF_AVAILABLE = False
-    warnings.warn(f"reportlab not installed or not accessible in the current environment. "
-                  f"Install with: pip install reportlab. Error: {e}")
+    warnings.warn("reportlab not installed. PDF export will be unavailable. Install with: pip install reportlab")
 
 class PortScanner:
     """Main port scanner class for network reconnaissance"""
@@ -378,7 +377,7 @@ def main() -> int:
     parser.add_argument('-p', '--ports', default='1-1000',
                       help='Ports to scan (e.g., 80, 1-100, 80,443,8080)')
     parser.add_argument('-o', '--output', 
-                      help='Output filename prefix (generates .json, .csv, .pdf)')
+                      help='Output filename with extension (e.g., report.json, report.csv, report.pdf)')
     parser.add_argument('--timeout', '-T', type=float, default=1.0,
                       help='Connection timeout in seconds (default: 1.0)')
     parser.add_argument('--threads', '-P', type=int, default=50,
@@ -427,9 +426,17 @@ def main() -> int:
     # Export results if requested
     if args.output and results:
         exporter = ReportExporter()
-        exporter.export_json(results, f"{args.output}.json")
-        exporter.export_csv(results, f"{args.output}.csv")
-        exporter.export_pdf(results, f"{args.output}.pdf")
+        output_extension = args.output.split('.')[-1].lower()
+        
+        if output_extension == 'json':
+            exporter.export_json(results, args.output)
+        elif output_extension == 'csv':
+            exporter.export_csv(results, args.output)
+        elif output_extension == 'pdf':
+            exporter.export_pdf(results, args.output)
+        else:
+            print(f"[-] Unsupported output format: {output_extension}. Supported formats are: json, csv, pdf.")
+            sys.exit(1)  # Exit if unsupported format is provided
     
     return 0
 
