@@ -25,9 +25,10 @@ try:
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
     from reportlab.lib.styles import getSampleStyleSheet
     PDF_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     PDF_AVAILABLE = False
-    warnings.warn("reportlab not installed. PDF export will be unavailable. Install with: pip install reportlab")
+    warnings.warn(f"reportlab not installed or not accessible in the current environment. "
+                  f"Install with: pip install reportlab. Error: {e}")
 
 class PortScanner:
     """Main port scanner class for network reconnaissance"""
