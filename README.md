@@ -1,8 +1,22 @@
 # Network Port Scanner ( WOLF )
 
-A Python-based network port scanner for reconnaissance and network analysis. This tool allows you to scan ports on a target host or range of hosts, identify open ports, and optionally generate a PDF report of the results.
+A Python-based network port scanner for reconnaissance and network analysis. This tool allows you to scan ports on a target host or range of hosts, identify open ports, and optionally generate a PDF/csv/json report of the results.
 
 ---
+  ╔════════════════════════════════════════════════════════════════════════╗
+    ║                        Network Port Scanner v1.0                       ║
+    ║                      For authorized testing only!                      ║
+    ╚════════════════════════════════════════════════════════════════════════╝
+
+                        ██     ██   ██████    ██       ███████ 
+                        ██     ██  ██    ██   ██       ██      
+                        ██  █  ██  ██    ██   ██       █████   
+                        ██ ███ ██  ██    ██   ██       ██      
+                        ███   ███   ██████    ███████  ██  
+                    
+
+                     --- Developed by:  >>>  CYBERMJ-MUJIB  <<< ---
+    """
 
 ## Features
 - Scan single ports, ranges of ports, or comma-separated lists of ports.
@@ -38,25 +52,30 @@ A Python-based network port scanner for reconnaissance and network analysis. Thi
 Command-Line Arguments
 The tool accepts the following arguments:
 
-    --targets: Specify the target(s) to scan (IP, hostname, or CIDR range).
+    --target: Specify the target(s) to scan (IP, hostname, or CIDR range).
     --ports: Specify the ports to scan (single port, range, or comma-separated list).
     --timeout: Set the socket connection timeout (default: 1.0 seconds).
     --threads: Set the maximum number of concurrent threads (default: 50).
-    --output: Specify the output file for the scan results (optional).
-    
+
+    Now, when you run the tool with -o followed by a filename with a specific extension, it will generate the report in the specified format. For example:
+
+        wolf -t 192.168.1.1 -p 80 -o report.json → Exports to JSON.
+        wolf -t 192.168.1.1 -p 80 -o report.csv → Exports to CSV.
+        wolf -t 192.168.1.1 -p 80 -o report.pdf →
+            
 ## Example Commands:
 
     Scan a single target on a specific port:
-    python main.py --targets 192.168.1.1 --ports 80
+    python wolf --target 192.168.1.1 --ports 80
 
     Scan a range of ports on a target:
-    python main.py --targets 192.168.1.1 --ports 20-100
+    python wolf --target 192.168.1.1 --ports 20-100
 
-    Scan multiple targets with a comma-separated list of ports:
-    python main.py --targets 192.168.1.1,192.168.1.2 --ports 22,80,443
+    Scan multiple target with a comma-separated list of ports:
+    python wolf --target 192.168.1.1,192.168.1.2 --ports 22,80,443
 
     Generate a PDF report:
-    python main.py --targets 192.168.1.1 --ports 80 --pdf report.pdf
+    python wolf --target 192.168.1.1 --ports 80 report.pdf
 
 ## Project Structure:
 
